@@ -6,6 +6,7 @@ func (c *Client) AutoMigrate() error {
 	var migrationList = []string{
 		migrationTableCreate,
 		sesEventsTableCreate,
+		sesEventsIndices,
 	}
 
 	mExists, err := c.migrationsExists()
