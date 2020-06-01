@@ -5,6 +5,7 @@ import (
 
 	"github.com/RaghavSood/postmaster/types"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 	"github.com/pkg/errors"
 )
 
@@ -42,4 +43,20 @@ func (c *Client) rowExists(query string, args ...interface{}) (bool, error) {
 	query = fmt.Sprintf("SELECT exists (%s)", query)
 	err := c.db.QueryRow(query, args...).Scan(&exists)
 	return exists, err
+}
+
+func (c *Client) GetEvents(from uint64, email string, event string) ([]*types.SESEvent, error) {
+	found := []*types.SESEvent{}
+
+	eArr := []string{email}
+	if from == 0 {
+		// sql package does not allow the highest bit to be set, therefore this is as high as we can go
+		from = 1<<63 - 1
+	}
+
+	query := "SELECT * FROM ses_events WHERE id<$1 AND ($2='{\"\"}' OR recipients@>$2::text[]) AND ($3='' OR event_type=$3)"
+	fmt.Println(pq.Array(&eArr))
+	err := c.db.Select(&found, query, from, pq.Array(&eArr), event)
+
+	return found, err
 }

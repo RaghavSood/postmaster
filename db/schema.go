@@ -28,6 +28,11 @@ CREATE INDEX idx_ses_events_event_data on ses_events USING GIN(event_data);
 
 UPDATE migrations SET latest_version=2 WHERE latest_version=1;`
 
+var sesEventsPrimaryKey = `
+ALTER TABLE ses_events ADD COLUMN id BIGSERIAL PRIMARY KEY;
+
+UPDATE migrations SET latest_version=3 WHERE latest_version=2;`
+
 func (c *Client) migrationsExists() (bool, error) {
 	var exists bool
 	err := c.db.QueryRow("select exists ( select from information_schema.tables where table_name='migrations')").Scan(&exists)

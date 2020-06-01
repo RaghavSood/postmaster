@@ -16,6 +16,7 @@ type SESNotification struct {
 }
 
 type SESEvent struct {
+	ID         uint64            `json:"id" db:"id"`
 	EventType  string            `json:"eventType" db:"event_type"`
 	MessageID  string            `json:"messageId" db:"message_id"`
 	Recipients pq.StringArray    `json:"recipients" db:"recipients"`

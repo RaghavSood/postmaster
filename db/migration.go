@@ -7,6 +7,7 @@ func (c *Client) AutoMigrate() error {
 		migrationTableCreate,
 		sesEventsTableCreate,
 		sesEventsIndices,
+		sesEventsPrimaryKey,
 	}
 
 	mExists, err := c.migrationsExists()

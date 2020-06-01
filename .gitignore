@@ -1,2 +1,6 @@
 config.yml
 *.sw*
+
+frontend/node_modules/*
+frontend/dist/*
+cmd/postmaster/app/a_app-packr.go

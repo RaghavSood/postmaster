@@ -7,6 +7,7 @@ import (
 	"github.com/RaghavSood/postmaster/db"
 	"github.com/RaghavSood/postmaster/types"
 	"github.com/gin-gonic/gin"
+	"github.com/gobuffalo/packr"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -74,15 +75,49 @@ func (p *Postmaster) run() error {
 		return errors.Wrap(err, "database migration failed")
 	}
 
+	box := packr.NewBox("../../../frontend/dist")
 	router := gin.Default()
 
 	router.Use(InjectDatabase(p.db))
 
 	router.POST("/sns_hook", processHook)
+	router.GET("/api/events", getEvents)
+	router.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusMovedPermanently, "dashboard/")
+	})
+	router.StaticFS("/dashboard", box)
 
 	router.Run()
 
 	return nil
+}
+
+func getEvents(c *gin.Context) {
+	var query types.EventPageQuery
+
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, err)
+		return
+	}
+
+	dbConn, ok := c.MustGet("database").(*db.Client)
+	if !ok {
+		log.Warn("Could not get database")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get database connection"})
+		return
+	}
+
+	eventList, err := dbConn.GetEvents(query.From, query.EmailFitler, query.EventFilter)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Warn("Could not get events")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get events"})
+		return
+	}
+
+	c.JSON(http.StatusOK, eventList)
+
 }
 
 func processHook(c *gin.Context) {
@@ -90,6 +125,7 @@ func processHook(c *gin.Context) {
 
 	if err := c.ShouldBindHeader(&headers); err != nil {
 		c.JSON(http.StatusBadRequest, err)
+		return
 	}
 
 	switch headers.MessageType {
@@ -101,10 +137,9 @@ func processHook(c *gin.Context) {
 
 			dbConn, ok := c.MustGet("database").(*db.Client)
 			if !ok {
-				log.WithFields(log.Fields{
-					"error": err,
-				}).Warn("Could not get database")
+				log.Warn("Could not get database")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get database connection"})
+				return
 			}
 
 			err = dbConn.InsertEvent(notif.Event)
@@ -113,6 +148,7 @@ func processHook(c *gin.Context) {
 					"error": err,
 				}).Warn("Could not insert event")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get save event into database"})
+				return
 
 			}
 
@@ -122,6 +158,7 @@ func processHook(c *gin.Context) {
 				"error": err,
 			}).Warn("Could not parse SNS notification")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "could not parse webhook"})
+			return
 		}
 	case "SubscriptionConfirmation":
 		var subscription types.SNSSubscription
@@ -136,11 +173,13 @@ func processHook(c *gin.Context) {
 					"status": status,
 				}).Warn("Could not confirm subscription")
 				c.JSON(http.StatusBadRequest, gin.H{"error": "could not confirm subscription"})
+				return
 			}
 
 			c.JSON(http.StatusOK, gin.H{"success": true})
 		} else {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "could not parse webhook"})
+			return
 		}
 	default:
 		c.JSON(http.StatusBadRequest, "")
