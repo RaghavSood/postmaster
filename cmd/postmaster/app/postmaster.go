@@ -75,13 +75,14 @@ func (p *Postmaster) run() error {
 		return errors.Wrap(err, "database migration failed")
 	}
 
-	box := packr.NewBox("../../../frontend/dist")
+	box := packr.NewBox("../../../frontend/build")
 	router := gin.Default()
 
 	router.Use(InjectDatabase(p.db))
 
 	router.POST("/sns_hook", processHook)
 	router.GET("/api/events", getEvents)
+	router.GET("/api/message", getMessageEvents)
 	router.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "dashboard/")
 	})
@@ -92,12 +93,20 @@ func (p *Postmaster) run() error {
 	return nil
 }
 
-func getEvents(c *gin.Context) {
+func getMessageEvents(c *gin.Context) {
 	var query types.EventPageQuery
 
 	if err := c.ShouldBindQuery(&query); err != nil {
 		c.JSON(http.StatusBadRequest, err)
 		return
+	}
+
+	if query.Direction == "" {
+		query.Direction = "next"
+	}
+
+	if query.Direction != "next" && query.Direction != "prev" && query.Direction != "first" && query.Direction != "last" {
+		c.JSON(http.StatusBadRequest, "invalid direction")
 	}
 
 	dbConn, ok := c.MustGet("database").(*db.Client)
@@ -107,7 +116,7 @@ func getEvents(c *gin.Context) {
 		return
 	}
 
-	eventList, err := dbConn.GetEvents(query.From, query.EmailFitler, query.EventFilter)
+	eventList, err := dbConn.GetMessageEvents(query.From, query.MessageId, query.Direction)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
@@ -116,7 +125,43 @@ func getEvents(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, eventList)
+	c.JSON(http.StatusOK, gin.H{"results": eventList})
+
+}
+
+func getEvents(c *gin.Context) {
+	var query types.EventPageQuery
+
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, err)
+		return
+	}
+
+	if query.Direction == "" {
+		query.Direction = "next"
+	}
+
+	if query.Direction != "next" && query.Direction != "prev" && query.Direction != "first" && query.Direction != "last" {
+		c.JSON(http.StatusBadRequest, "invalid direction")
+	}
+
+	dbConn, ok := c.MustGet("database").(*db.Client)
+	if !ok {
+		log.Warn("Could not get database")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get database connection"})
+		return
+	}
+
+	eventList, err := dbConn.GetEvents(query.From, query.EmailFitler, query.EventFilter, query.Direction)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Warn("Could not get events")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get events"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"results": eventList})
 
 }
 
