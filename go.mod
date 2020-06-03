@@ -3,7 +3,9 @@ module github.com/RaghavSood/postmaster
 go 1.13
 
 require (
+	github.com/gin-gonic/contrib v0.0.0-20191209060500-d6e26eeaa607 // indirect
 	github.com/gin-gonic/gin v1.6.3
+	github.com/go-bindata/go-bindata v3.1.2+incompatible // indirect
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/lib/pq v1.0.0
 	github.com/markbates/pkger v0.16.0
