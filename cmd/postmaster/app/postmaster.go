@@ -7,7 +7,7 @@ import (
 	"github.com/RaghavSood/postmaster/db"
 	"github.com/RaghavSood/postmaster/types"
 	"github.com/gin-gonic/gin"
-	"github.com/gobuffalo/packr"
+	"github.com/markbates/pkger"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -75,7 +75,6 @@ func (p *Postmaster) run() error {
 		return errors.Wrap(err, "database migration failed")
 	}
 
-	box := packr.NewBox("../../../frontend/build")
 	router := gin.Default()
 
 	router.Use(InjectDatabase(p.db))
@@ -86,7 +85,7 @@ func (p *Postmaster) run() error {
 	router.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "dashboard/")
 	})
-	router.StaticFS("/dashboard", box)
+	router.StaticFS("/dashboard", pkger.Dir("/frontend/build"))
 
 	router.Run()
 
