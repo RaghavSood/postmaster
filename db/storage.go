@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-const PAGE_SIZE = 3
+const PAGE_SIZE = 50
 
 type Client struct {
 	db *sqlx.DB
