@@ -1,8 +1,10 @@
 import React from 'react';
+import { Label } from 'semantic-ui-react';
 import EventsTable from './EventsTable';
 import EventTypeDropdown from './EventTypeDropdown';
 import PageButtons from './PageButtons';
 import SearchBar from './SearchBar';
+import SupessionForm from './SupressionForm';
 
 export default class ConnectedEventsTable extends React.Component {
     state = {
@@ -23,6 +25,10 @@ export default class ConnectedEventsTable extends React.Component {
     render() {
         return (
             <div>
+                <div className="ui container">
+                    <SupessionForm/>
+                </div>
+                <br />
                 <div className="ui container">
                     <EventTypeDropdown filterCallback={this.handleEventTypeFilter} />
                     <SearchBar filterCallback={this.handleSearchBar} />
