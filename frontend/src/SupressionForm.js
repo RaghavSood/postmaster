@@ -1,10 +1,17 @@
 import React from 'react';
 import {Input, Button,Label,Dropdown } from 'semantic-ui-react'
 
+    function handleErrors(response) {
+        if (response.error != undefined) {
+            throw Error(response.error);
+        }
+        return response;
+    }
+
 
 const options = [
-    { key: 1, text: 'Bounce', value: 'Bounce' },
-    { key: 2, text: 'Complaint', value: 'Complaint' },
+    { key: 1, text: 'Bounce', value: 'BOUNCE' },
+    { key: 2, text: 'Complaint', value: 'COMPLAINT' },
 ]
 
 export default class SupessionForm extends React.Component{
@@ -42,25 +49,32 @@ export default class SupessionForm extends React.Component{
     }
 
     handleCheckButtonClicked() {
-        var searchQuery = this.state.searchQuery;
-	fetch(`http://localhost:8080/api/suppression/check?email=${searchQuery}`)
+        var searchQuery = this.state.searchQueryCheckDelete;
+	fetch(`/api/suppression/check?email=${searchQuery}`)
             .then((response) => response.json())
-	    .then((response) => alert(response.email_address))
+	    .then(handleErrors)
+	    .then((response) => alert(response.results.result_message))
+	    .catch((error) => alert(error))
       }
       
 
     handleAddButtonClicked() {
         var searchQuery = this.state.searchQueryAdd;
         var reason = this.state.reason;
-        alert('Added: ' + searchQuery + 'because: ' + reason)
-        console.log(searchQuery)
+        fetch(`/api/suppression/add?email=${searchQuery}&reason=${reason}`, {method: 'POST'})
+            .then((response) => response.json())
+	    .then(handleErrors)
+	    .then((response) => alert(response.results.result_message))
+	    .catch((error) => alert(error))
     }
 
     handleDeleteButtonClicked() {
-        var searchQuery = this.state.searchQuery;
-        fetch(`http://localhost:8080/api/suppression/delete?email=${searchQuery}`)
+        var searchQuery = this.state.searchQueryCheckDelete;
+        fetch(`/api/suppression/delete?email=${searchQuery}`, {method: 'POST'})
             .then((response) => response.json())
-	    .then((response) => alert(response.response))
+	    .then(handleErrors)
+	    .then((response) => alert(response.results.result_message))
+	    .catch((error) => alert(error))
       }
     
 
@@ -68,7 +82,7 @@ export default class SupessionForm extends React.Component{
         return (
             <div>
                 <div>
-                    <h3> Suppression List Form </h3>
+                    <h3>Suppression List Management</h3>
                 </div>
             <Label>    
             <Input type="text" placeholder = "Enter email" style={{paddingBottom :'15px', width: '400px'}} value={this.state.searchQueryCheckDelete} onChange={this.handleInputChanged.bind(this)}/>

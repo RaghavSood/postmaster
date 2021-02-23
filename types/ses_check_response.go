@@ -5,9 +5,8 @@ import (
 )
 
 type SESCheckResonse struct {
-	Email string `json:"email_address"`
-
+	Email           string    `json:"email_address"`
 	LastUpdatedTime time.Time `json:"last_updated_time"`
-
-	Reason string `json:"reason"`
+	Reason          string    `json:"reason"`
+	ResultMessage   string    `json:"result_message"`
 }

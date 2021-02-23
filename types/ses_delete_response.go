@@ -1,5 +1,7 @@
 package types
 
 type SESDeleteResonse struct {
-	Response string `json:"output"`
+	Email         string `json:"email"`
+	Response      string `json:"output"`
+	ResultMessage string `json:"result_message"`
 }

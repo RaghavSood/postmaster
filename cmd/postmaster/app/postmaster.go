@@ -1,12 +1,14 @@
 package app
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 
 	"github.com/RaghavSood/postmaster/db"
 	"github.com/RaghavSood/postmaster/types"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sesv2"
@@ -104,7 +106,8 @@ func (p *Postmaster) run() error {
 	router.GET("/api/events", getEvents)
 	router.GET("/api/message", getMessageEvents)
 	router.GET("/api/suppression/check", getSuppressionListCheck)
-	router.GET("/api/suppression/delete", getSuppressionListDelete)
+	router.POST("/api/suppression/delete", postSuppressionListDelete)
+	router.POST("/api/suppression/add", postSuppressionListAdd)
 	router.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "dashboard/")
 	})
@@ -136,21 +139,35 @@ func getSuppressionListCheck(c *gin.Context) {
 
 	output, err := sesClient.GetSuppressedDestination(&input)
 	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			case "NotFoundException":
+				checkResponse := types.SESCheckResonse{
+					Email:         query.Email,
+					ResultMessage: fmt.Sprintf("%s is not on the suppresion list", query.Email),
+				}
+				c.JSON(http.StatusOK, gin.H{"results": checkResponse})
+				return
+			}
+		}
 		log.WithFields(log.Fields{
 			"error": err,
 		}).Warn("Could not check email status")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not check email status"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("could not check email status: %s", err.Error())})
 		return
 	}
+
 	checkResponse := types.SESCheckResonse{
 		Email:           *output.SuppressedDestination.EmailAddress,
 		LastUpdatedTime: *output.SuppressedDestination.LastUpdateTime,
 		Reason:          *output.SuppressedDestination.Reason,
+		ResultMessage:   fmt.Sprintf("%s is on the suppression list due to %s. Last event at %s", *output.SuppressedDestination.EmailAddress, *output.SuppressedDestination.Reason, *output.SuppressedDestination.LastUpdateTime),
 	}
+
 	c.JSON(http.StatusOK, gin.H{"results": checkResponse})
 }
 
-func getSuppressionListDelete(c *gin.Context) {
+func postSuppressionListDelete(c *gin.Context) {
 	var query types.SESQuery
 
 	if err := c.ShouldBindQuery(&query); err != nil {
@@ -169,18 +186,80 @@ func getSuppressionListDelete(c *gin.Context) {
 		return
 	}
 
-	output, err := sesClient.DeleteSuppressedDestination(&input)
+	_, err := sesClient.DeleteSuppressedDestination(&input)
 	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			case "NotFoundException":
+				delResponse := types.SESDeleteResonse{
+					Email:         query.Email,
+					ResultMessage: fmt.Sprintf("%s cannot be removed from the suppression list as it is not on the suppression list", query.Email),
+				}
+				c.JSON(http.StatusOK, gin.H{"results": delResponse})
+				return
+			}
+		}
 		log.WithFields(log.Fields{
 			"error": err,
 		}).Warn("Could not delete email from suppression list")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not delete email from suppression list"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Could not delete email from suppression list: %s", err.Error())})
 		return
 	}
-	checkResponse := types.SESDeleteResonse{
-		Response: output.String(),
+
+	delResponse := types.SESDeleteResonse{
+		Email:         query.Email,
+		ResultMessage: fmt.Sprintf("%s removed from suppression list successfully", query.Email),
 	}
-	c.JSON(http.StatusOK, gin.H{"results": checkResponse})
+
+	c.JSON(http.StatusOK, gin.H{"results": delResponse})
+}
+
+func postSuppressionListAdd(c *gin.Context) {
+	var query types.SESQuery
+
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, err)
+		return
+	}
+
+	input := sesv2.PutSuppressedDestinationInput{
+		EmailAddress: &query.Email,
+		Reason:       &query.Reason,
+	}
+
+	sesClient, ok := c.MustGet("ses_client").(*sesv2.SESV2)
+	if !ok {
+		log.Warn("Could not get SES Client")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get SES Client"})
+		return
+	}
+
+	_, err := sesClient.PutSuppressedDestination(&input)
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			case "NotFoundException":
+				delResponse := types.SESDeleteResonse{
+					Email:         query.Email,
+					ResultMessage: fmt.Sprintf("%s cannot be added to the suppression list", query.Email),
+				}
+				c.JSON(http.StatusOK, gin.H{"results": delResponse})
+				return
+			}
+		}
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Warn("Could not delete email from suppression list")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Could not add email to the suppression list: %s", err.Error())})
+		return
+	}
+
+	delResponse := types.SESDeleteResonse{
+		Email:         query.Email,
+		ResultMessage: fmt.Sprintf("%s added to the suppression list successfully", query.Email),
+	}
+
+	c.JSON(http.StatusOK, gin.H{"results": delResponse})
 }
 
 func getMessageEvents(c *gin.Context) {
