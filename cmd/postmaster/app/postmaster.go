@@ -104,6 +104,7 @@ func (p *Postmaster) run() error {
 	router.GET("/api/events", getEvents)
 	router.GET("/api/message", getMessageEvents)
 	router.GET("/api/suppression/check", getSuppressionListCheck)
+	router.GET("/api/suppression/delete", getSuppressionListDelete)
 	router.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "dashboard/")
 	})
@@ -141,8 +142,45 @@ func getSuppressionListCheck(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not check email status"})
 		return
 	}
+	checkResponse := types.SESCheckResonse{
+		Email:           *output.SuppressedDestination.EmailAddress,
+		LastUpdatedTime: *output.SuppressedDestination.LastUpdateTime,
+		Reason:          *output.SuppressedDestination.Reason,
+	}
+	c.JSON(http.StatusOK, gin.H{"results": checkResponse})
+}
 
-	c.JSON(http.StatusOK, gin.H{"results": output.SuppressedDestination.String()})
+func getSuppressionListDelete(c *gin.Context) {
+	var query types.SESQuery
+
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, err)
+		return
+	}
+
+	input := sesv2.DeleteSuppressedDestinationInput{
+		EmailAddress: &query.Email,
+	}
+
+	sesClient, ok := c.MustGet("ses_client").(*sesv2.SESV2)
+	if !ok {
+		log.Warn("Could not get SES Client")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get SES Client"})
+		return
+	}
+
+	output, err := sesClient.DeleteSuppressedDestination(&input)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Warn("Could not delete email from suppression list")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not delete email from suppression list"})
+		return
+	}
+	checkResponse := types.SESDeleteResonse{
+		Response: output.String(),
+	}
+	c.JSON(http.StatusOK, gin.H{"results": checkResponse})
 }
 
 func getMessageEvents(c *gin.Context) {
