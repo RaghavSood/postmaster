@@ -6,6 +6,10 @@ import (
 
 	"github.com/RaghavSood/postmaster/db"
 	"github.com/RaghavSood/postmaster/types"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/sesv2"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -15,7 +19,8 @@ import (
 var config Config
 
 type Postmaster struct {
-	db *db.Client
+	sesClient *sesv2.SESV2
+	db        *db.Client
 }
 
 func Serve(configPath string) error {
@@ -49,8 +54,17 @@ func runApp() error {
 		return errors.Wrap(err, "could not connect to database")
 	}
 
+	creds := credentials.NewStaticCredentials(config.SESKey, config.SESSecret, "")
+	sess, err := session.NewSession(&aws.Config{
+		Region:      aws.String("eu-central-1"),
+		Credentials: creds,
+	})
+
+	svc := sesv2.New(sess)
+
 	postmaster := &Postmaster{
-		db: dbClient,
+		db:        dbClient,
+		sesClient: svc,
 	}
 
 	err = postmaster.run()
@@ -59,6 +73,13 @@ func runApp() error {
 	}
 
 	return nil
+}
+
+func InjectSES(sesClient *sesv2.SESV2) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Set("ses_client", sesClient)
+		c.Next()
+	}
 }
 
 func InjectDatabase(dbc *db.Client) gin.HandlerFunc {
@@ -77,10 +98,12 @@ func (p *Postmaster) run() error {
 	router := gin.Default()
 
 	router.Use(InjectDatabase(p.db))
+	router.Use(InjectSES(p.sesClient))
 
 	router.POST("/sns_hook", processHook)
 	router.GET("/api/events", getEvents)
 	router.GET("/api/message", getMessageEvents)
+	router.GET("/api/suppression/check", getSuppressionListCheck)
 	router.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "dashboard/")
 	})
@@ -89,6 +112,37 @@ func (p *Postmaster) run() error {
 	router.Run()
 
 	return nil
+}
+
+func getSuppressionListCheck(c *gin.Context) {
+	var query types.SESQuery
+
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, err)
+		return
+	}
+
+	input := sesv2.GetSuppressedDestinationInput{
+		EmailAddress: &query.Email,
+	}
+
+	sesClient, ok := c.MustGet("ses_client").(*sesv2.SESV2)
+	if !ok {
+		log.Warn("Could not get SES Client")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not get SES Client"})
+		return
+	}
+
+	output, err := sesClient.GetSuppressedDestination(&input)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+		}).Warn("Could not check email status")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not check email status"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"results": output.SuppressedDestination.String()})
 }
 
 func getMessageEvents(c *gin.Context) {
