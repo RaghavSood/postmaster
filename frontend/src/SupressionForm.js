@@ -17,8 +17,9 @@ export default class SupessionForm extends React.Component{
 
     handleCheckButtonClicked() {
         var searchQuery = this.state.searchQuery;
-        alert('Checking: ' + searchQuery + '\n' + 'It is present/not in the suppression list')
-        console.log(searchQuery)
+	fetch(`http://localhost:8080/api/suppression/check?email=${searchQuery}`)
+            .then((response) => response.json())
+	    .then((response) => alert(response))
       }
       
 
